@@ -1,36 +1,146 @@
-#include <iostream>
-#include <vector>
-#include <map>
-#include <algorithm>
-#include <fstream>  // Included for file operations
-#include <sys/types.h>
-#include <sys/stat.h>
-#ifdef _WIN32
-#include <direct.h>  // For Windows mkdir
-#else
-#include <unistd.h>  // For POSIX mkdir
-#endif
+#include "defs.hpp"
 
 using namespace std;
 
-const int INFINITY = 999; // Representation of infinity
-
-struct Edge {
-    int src;
-    int dest;
-    int cost;
-};
-
-struct Node {
-    int id;
-    map<int, int> distanceVector; // Destination -> Cost
-    map<int, int> nextHop;        // Destination -> Next hop
-    vector<int> neighbors;
-};
 
 
 void initializeNodes(vector<Node>& nodes, vector<Edge>& edges, int N);
 void initializeDistanceVectors(vector<Node>& nodes, vector<Edge>& edges, int N);
+
+
+
+int main() {
+    // Inputting number of routers and number of links
+    int N, M;
+    cin >> N >> M;
+
+    // Inputting edges and their costs
+    vector<Edge> edges(M);
+    for (int i = 0; i < M; ++i) {
+        cin >> edges[i].src >> edges[i].dest >> edges[i].cost;
+    }
+
+    int method = 1; // No error correction method
+
+    vector<Node> nodes;
+    initializeNodes(nodes, edges, N);
+    initializeDistanceVectors(nodes, edges, N);
+
+    // Run the DVR algorithm until convergence
+    bool updated;
+    int iteration = 0; // Iteration counter
+    do {
+        updated = updateDistanceVectors(nodes, N, method);
+
+        // Increment iteration counter
+        iteration++;
+
+        // Generate filename
+        string filename = "distance_vectors_iteration_" + to_string(iteration) + ".txt";
+
+        // Print the current distance vectors to file
+        printDistanceVectorsToFile(nodes, N, filename);
+
+    } while (updated);
+
+    cout << "\nRouting tables after running DVR algorithm:\n";
+    printRoutingTables(nodes, N);
+
+    // Simulate link failure
+    int failSrc, failDest;
+    cout << "Simulate Link Failure between\n";
+    cout << "Node A: ";
+    cin >> failSrc;
+    // cout << "\n";
+    cout << "Node B: ";
+    cin >> failDest;
+
+    // Remove the edge from edges list
+    edges.erase(remove_if(edges.begin(), edges.end(), [failSrc, failDest](Edge& e) {
+        return (e.src == failSrc && e.dest == failDest) || (e.src == failDest && e.dest == failSrc);
+    }), edges.end());
+
+    // Update neighbors
+    nodes[failSrc].neighbors.erase(remove(nodes[failSrc].neighbors.begin(), nodes[failSrc].neighbors.end(), failDest),
+                                   nodes[failSrc].neighbors.end());
+    nodes[failDest].neighbors.erase(remove(nodes[failDest].neighbors.begin(), nodes[failDest].neighbors.end(), failSrc),
+                                    nodes[failDest].neighbors.end());
+
+    nodes[failSrc].distanceVector[failDest] = INFINITY;
+    nodes[failDest].distanceVector[failSrc] = INFINITY;
+    nodes[failSrc].nextHop[failDest] = -1;
+    nodes[failDest].nextHop[failSrc] = -1;
+
+    // Re-run the DVR algorithm until convergence or until any distance exceeds 100
+    bool countToInfinity = false;
+    iteration = 0; // Reset iteration counter
+    do {
+        updated = updateDistanceVectors(nodes, N, method);
+        countToInfinity = checkCountToInfinity(nodes, N);
+        if (countToInfinity) {
+            cout << "Count-to-infinity problem detected.\n";
+            break;
+        }
+
+        // Increment iteration counter
+        iteration++;
+
+        // Generate filename
+        string filename = "distance_vectors_after_failure_iteration_" + to_string(iteration) + ".txt";
+
+        // Print the current distance vectors to file
+        printDistanceVectorsToFile(nodes, N, filename);
+
+    } while (updated);
+
+    cout << "\nRouting tables after link failure";
+    if (method == 2) {
+        cout << " with Poisoned Reverse";
+    } else if (method == 3) {
+        cout << " with Split Horizon";
+    }
+    cout << ":\n";
+    printRoutingTables(nodes, N);
+
+    return 0;
+}
+
+void initializeNodes(vector<Node>& nodes, vector<Edge>& edges, int N) {
+    nodes.resize(N + 1); // Assuming nodes are numbered from 1 to N
+    for (int i = 1; i <= N; ++i) {
+        nodes[i].id = i;
+    }
+    for (auto& edge : edges) {
+        nodes[edge.src].neighbors.push_back(edge.dest);
+        nodes[edge.dest].neighbors.push_back(edge.src);
+    }
+}
+
+void initializeDistanceVectors(vector<Node>& nodes, vector<Edge>& edges, int N) {
+    for (int i = 1; i <= N; ++i) {
+        nodes[i].distanceVector.clear();
+        nodes[i].nextHop.clear();
+        for (int j = 1; j <= N; ++j) {
+            if (i == j) {
+                nodes[i].distanceVector[j] = 0;
+                nodes[i].nextHop[j] = j;
+            } else {
+                nodes[i].distanceVector[j] = INFINITY;
+                nodes[i].nextHop[j] = -1;
+            }
+        }
+    }
+
+    // Set the costs for directly connected neighbors
+    for (auto& edge : edges) {
+        nodes[edge.src].distanceVector[edge.dest] = edge.cost;
+        nodes[edge.src].nextHop[edge.dest] = edge.dest;
+
+        nodes[edge.dest].distanceVector[edge.src] = edge.cost;
+        nodes[edge.dest].nextHop[edge.src] = edge.src;
+    }
+}
+
 
 bool updateDistanceVectors(vector<Node>& nodes, int N, int method) {
     vector<map<int, int>> oldDVs;
@@ -171,136 +281,4 @@ void printDistanceVectorsToFile(const vector<Node>& nodes, int N, const string& 
     }
 
     outFile.close();
-}
-
-int main() {
-    // Inputting number of routers and number of links
-    int N, M;
-    cin >> N >> M;
-
-    // Inputting edges and their costs
-    vector<Edge> edges(M);
-    for (int i = 0; i < M; ++i) {
-        cin >> edges[i].src >> edges[i].dest >> edges[i].cost;
-    }
-
-    int method = 1; // No error correction method
-
-    vector<Node> nodes;
-    initializeNodes(nodes, edges, N);
-    initializeDistanceVectors(nodes, edges, N);
-
-    // Run the DVR algorithm until convergence
-    bool updated;
-    int iteration = 0; // Iteration counter
-    do {
-        updated = updateDistanceVectors(nodes, N, method);
-
-        // Increment iteration counter
-        iteration++;
-
-        // Generate filename
-        string filename = "distance_vectors_iteration_" + to_string(iteration) + ".txt";
-
-        // Print the current distance vectors to file
-        printDistanceVectorsToFile(nodes, N, filename);
-
-    } while (updated);
-
-    cout << "\nRouting tables after running DVR algorithm:\n";
-    printRoutingTables(nodes, N);
-
-    // Simulate link failure
-    int failSrc, failDest;
-    cout << "Simulate Link Failure between\n";
-    cout << "Node A: ";
-    cin >> failSrc;
-    // cout << "\n";
-    cout << "Node B: ";
-    cin >> failDest;
-
-    // Remove the edge from edges list
-    edges.erase(remove_if(edges.begin(), edges.end(), [failSrc, failDest](Edge& e) {
-        return (e.src == failSrc && e.dest == failDest) || (e.src == failDest && e.dest == failSrc);
-    }), edges.end());
-
-    // Update neighbors
-    nodes[failSrc].neighbors.erase(remove(nodes[failSrc].neighbors.begin(), nodes[failSrc].neighbors.end(), failDest),
-                                   nodes[failSrc].neighbors.end());
-    nodes[failDest].neighbors.erase(remove(nodes[failDest].neighbors.begin(), nodes[failDest].neighbors.end(), failSrc),
-                                    nodes[failDest].neighbors.end());
-
-    nodes[failSrc].distanceVector[failDest] = INFINITY;
-    nodes[failDest].distanceVector[failSrc] = INFINITY;
-    nodes[failSrc].nextHop[failDest] = -1;
-    nodes[failDest].nextHop[failSrc] = -1;
-
-    // Re-run the DVR algorithm until convergence or until any distance exceeds 100
-    bool countToInfinity = false;
-    iteration = 0; // Reset iteration counter
-    do {
-        updated = updateDistanceVectors(nodes, N, method);
-        countToInfinity = checkCountToInfinity(nodes, N);
-        if (countToInfinity) {
-            cout << "Count-to-infinity problem detected.\n";
-            break;
-        }
-
-        // Increment iteration counter
-        iteration++;
-
-        // Generate filename
-        string filename = "distance_vectors_after_failure_iteration_" + to_string(iteration) + ".txt";
-
-        // Print the current distance vectors to file
-        printDistanceVectorsToFile(nodes, N, filename);
-
-    } while (updated);
-
-    cout << "\nRouting tables after link failure";
-    if (method == 2) {
-        cout << " with Poisoned Reverse";
-    } else if (method == 3) {
-        cout << " with Split Horizon";
-    }
-    cout << ":\n";
-    printRoutingTables(nodes, N);
-
-    return 0;
-}
-
-void initializeNodes(vector<Node>& nodes, vector<Edge>& edges, int N) {
-    nodes.resize(N + 1); // Assuming nodes are numbered from 1 to N
-    for (int i = 1; i <= N; ++i) {
-        nodes[i].id = i;
-    }
-    for (auto& edge : edges) {
-        nodes[edge.src].neighbors.push_back(edge.dest);
-        nodes[edge.dest].neighbors.push_back(edge.src);
-    }
-}
-
-void initializeDistanceVectors(vector<Node>& nodes, vector<Edge>& edges, int N) {
-    for (int i = 1; i <= N; ++i) {
-        nodes[i].distanceVector.clear();
-        nodes[i].nextHop.clear();
-        for (int j = 1; j <= N; ++j) {
-            if (i == j) {
-                nodes[i].distanceVector[j] = 0;
-                nodes[i].nextHop[j] = j;
-            } else {
-                nodes[i].distanceVector[j] = INFINITY;
-                nodes[i].nextHop[j] = -1;
-            }
-        }
-    }
-
-    // Set the costs for directly connected neighbors
-    for (auto& edge : edges) {
-        nodes[edge.src].distanceVector[edge.dest] = edge.cost;
-        nodes[edge.src].nextHop[edge.dest] = edge.dest;
-
-        nodes[edge.dest].distanceVector[edge.src] = edge.cost;
-        nodes[edge.dest].nextHop[edge.src] = edge.src;
-    }
 }
