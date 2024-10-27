@@ -2,12 +2,8 @@
 
 using namespace std;
 
-
-
 void initializeNodes(vector<Node>& nodes, vector<Edge>& edges, int N);
 void initializeDistanceVectors(vector<Node>& nodes, vector<Edge>& edges, int N);
-
-
 
 int main() {
     // Inputting number of routers and number of links
