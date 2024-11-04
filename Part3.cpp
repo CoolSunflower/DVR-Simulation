@@ -262,10 +262,10 @@ void createDirectoryIfNotExists(const std::string& dirName) {
 // Modified function to print distance vectors to a file in matrix form in "Part1" folder
 void printDistanceVectorsToFile(const vector<Node>& nodes, int N, const string& filename) {
     // Ensure the directory "Part1" exists
-    createDirectoryIfNotExists("Part3");
+    createDirectoryIfNotExists("Part3Sim");
 
     // Construct the full file path
-    string fullFilePath = "Part3/" + filename;
+    string fullFilePath = "Part3Sim/" + filename;
 
     ofstream outFile(fullFilePath);
     if (!outFile.is_open()) {
